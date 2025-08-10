@@ -1,0 +1,69 @@
+services:
+  # PostgreSQL (User, Product, Order servisleri için)
+  postgres-db:
+    image: postgres:14-alpine
+    container_name: postgres-db
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ecommerce-network
+
+  # Couchbase (Cart servisi için)
+  couchbase-db:
+    image: couchbase:community-7.1.1
+    container_name: couchbase-db
+    ports:
+      - "8091-8096:8091-8096" # Admin UI ve API portları
+      - "11210:11210" # Veri (KV) portu
+    environment:
+      - COUCHBASE_ADMINISTRATOR_USERNAME=${COUCHBASE_USER}
+      - COUCHBASE_ADMINISTRATOR_PASSWORD=${COUCHBASE_PASSWORD}
+    volumes:
+      - couchbase_data:/opt/couchbase/var
+    networks:
+      - ecommerce-network
+
+  # Redis (Product servisi için)
+  redis-cache:
+    image: redis:7-alpine
+    container_name: redis-cache
+    ports:
+      - "6379:6379"
+    networks:
+      - ecommerce-network
+
+  # RabbitMQ - Mesaj Kuyruğu (Asenkron iletişim için)
+  message-broker:
+    image: rabbitmq:3.10-management-alpine
+    container_name: message-broker
+    ports:
+      - "5672:5672" # Protokol portu
+      - "15672:15672" # Yönetim arayüzü
+    networks:
+      - ecommerce-network
+
+  # Jaeger - Distributed Tracing Sistemimiz
+  jaeger-tracer:
+    image: jaegertracing/all-in-one:1.35
+    container_name: jaeger-tracer
+    ports:
+      - "16686:16686" # Yönetim arayüzü
+      - "14268:14268" # Trace alımı için
+    networks:
+      - ecommerce-network
+
+# Servislerin birbirleriyle konuşabilmesi için ortak network
+networks:
+  ecommerce-network:
+    driver: bridge
+
+# Verilerin kalıcı olması için diskte ayrılan alanlar
+volumes:
+  postgres_data:
+  couchbase_data:
