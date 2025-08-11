@@ -51,13 +51,17 @@ services:
 
   # Jaeger - Distributed Tracing Sistemimiz
   jaeger-tracer:
-    image: jaegertracing/all-in-one:1.35
+    image: jaegertracing/all-in-one:1.72.0
     container_name: jaeger-tracer
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
     ports:
-      - "16686:16686" # Yönetim arayüzü
-      - "14268:14268" # Trace alımı için
+      - "16686:16686"   # Jaeger UI
+      - "4317:4317"     # OTLP gRPC endpoint
+      - "4318:4318"     # OTLP HTTP endpoint
     networks:
       - ecommerce-network
+
 
 # Servislerin birbirleriyle konuşabilmesi için ortak network
 networks:
