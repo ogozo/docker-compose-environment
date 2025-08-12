@@ -1,5 +1,5 @@
 services:
-  # PostgreSQL (User, Product, Order servisleri için)
+  # PostgreSQL (User, Product, Order)
   postgres-db:
     image: postgres:14-alpine
     container_name: postgres-db
@@ -15,13 +15,13 @@ services:
     networks:
       - ecommerce-network
 
-  # Couchbase (Cart servisi için)
+  # Couchbase (Cart)
   couchbase-db:
     image: couchbase:community-7.1.1
     container_name: couchbase-db
     ports:
-      - "8091-8096:8091-8096" # Admin UI ve API portları
-      - "11210:11210" # Veri (KV) portu
+      - "8091-8096:8091-8096"
+      - "11210:11210"
     environment:
       - COUCHBASE_ADMINISTRATOR_USERNAME=${COUCHBASE_USER}
       - COUCHBASE_ADMINISTRATOR_PASSWORD=${COUCHBASE_PASSWORD}
@@ -30,45 +30,33 @@ services:
     networks:
       - ecommerce-network
 
-  # Redis (Product servisi için)
-  redis-cache:
-    image: redis:7-alpine
-    container_name: redis-cache
+  # RabbitMQ
+  rabbitmq:
+    image: rabbitmq:4.1.3-management-alpine
+    container_name: rabbitmq
     ports:
-      - "6379:6379"
+      - "5672:5672"
+      - "15672:15672"
     networks:
       - ecommerce-network
 
-  # RabbitMQ - Mesaj Kuyruğu (Asenkron iletişim için)
-  message-broker:
-    image: rabbitmq:3.10-management-alpine
-    container_name: message-broker
-    ports:
-      - "5672:5672" # Protokol portu
-      - "15672:15672" # Yönetim arayüzü
-    networks:
-      - ecommerce-network
-
-  # Jaeger - Distributed Tracing Sistemimiz
+  # Jaeger - Distributed Tracing
   jaeger-tracer:
     image: jaegertracing/all-in-one:1.72.0
     container_name: jaeger-tracer
     environment:
       - COLLECTOR_OTLP_ENABLED=true
     ports:
-      - "16686:16686"   # Jaeger UI
-      - "4317:4317"     # OTLP gRPC endpoint
-      - "4318:4318"     # OTLP HTTP endpoint
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
     networks:
       - ecommerce-network
 
-
-# Servislerin birbirleriyle konuşabilmesi için ortak network
 networks:
   ecommerce-network:
     driver: bridge
 
-# Verilerin kalıcı olması için diskte ayrılan alanlar
 volumes:
   postgres_data:
   couchbase_data:
