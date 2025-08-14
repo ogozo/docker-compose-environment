@@ -1,0 +1,12 @@
+global:
+  scrape_interval: 10s
+
+scrape_configs:
+  - job_name: 'e-commerce-services'
+    static_configs:
+      - targets: 
+        - 'host.docker.internal:3000'   # api-gateway
+        - 'host.docker.internal:9001'   # service-user
+        - 'host.docker.internal:9002'   # service-product
+        - 'host.docker.internal:9003'   # service-cart
+        - 'host.docker.internal:9004'   # service-order
