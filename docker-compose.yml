@@ -1,4 +1,5 @@
 services:
+  # ------------ DATABASES ------------ #
   # PostgreSQL (User, Product, Order)
   postgres-db:
     image: postgres:14-alpine
@@ -14,6 +15,17 @@ services:
       - ./postgres-init:/docker-entrypoint-initdb.d
     networks:
       - ecommerce-network
+    depends_on:
+      - fluent-bit
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: localhost:24224
+        fluentd-async: "true"
+        fluentd-retry-wait: "1s"
+        fluentd-max-retries: "30"
+        tag: postgres
+    restart: unless-stopped
   
   # Couchbase (Cart)    
   couchbase-db:
@@ -28,6 +40,17 @@ services:
       - couchbase_data:/opt/couchbase/var
     networks:
       - ecommerce-network
+    depends_on:
+      - fluent-bit
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: localhost:24224
+        fluentd-async: "true"
+        fluentd-retry-wait: "1s"
+        fluentd-max-retries: "30"
+        tag: couchbase
+    restart: unless-stopped
   
   # Couchbase Setup    
   init-couchbase:
@@ -38,11 +61,41 @@ services:
     container_name: init-couchbase
     depends_on:
       - couchbase-db
+      - fluent-bit
     env_file:
       - .env
     networks:
       - ecommerce-network
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: localhost:24224
+        fluentd-async: "true"
+        fluentd-retry-wait: "1s"
+        fluentd-max-retries: "30"
+        tag: init-couchbase
 
+  # Redis - Caching
+  redis-cache:
+    image: redis:8.2.0
+    container_name: redis-cache
+    ports:
+      - "6379:6379"
+    networks:
+      - ecommerce-network
+    depends_on:
+      - fluent-bit
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: localhost:24224
+        fluentd-async: "true"
+        fluentd-retry-wait: "1s"
+        fluentd-max-retries: "30"
+        tag: redis
+    restart: unless-stopped
+
+  # ------------ MESSAGE QUEUE ------------ #
   # RabbitMQ
   rabbitmq:
     image: rabbitmq:4.1.3-management-alpine
@@ -52,7 +105,19 @@ services:
       - "15672:15672"
     networks:
       - ecommerce-network
+    depends_on:
+      - fluent-bit
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: localhost:24224
+        fluentd-async: "true"
+        fluentd-retry-wait: "1s"
+        fluentd-max-retries: "30"
+        tag: rabbitmq
+    restart: unless-stopped
 
+  # ------------ OBSERVABILITY ------------ #
   # Jaeger - Distributed Tracing
   jaeger-tracer:
     image: jaegertracing/all-in-one:1.72.0
@@ -65,15 +130,17 @@ services:
       - "4318:4318"
     networks:
       - ecommerce-network
-
-  # Redis - Caching
-  redis-cache:
-    image: redis:8.2.0
-    container_name: redis-cache
-    ports:
-      - "6379:6379"
-    networks:
-      - ecommerce-network
+    depends_on:
+      - fluent-bit
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: localhost:24224
+        fluentd-async: "true"
+        fluentd-retry-wait: "1s"
+        fluentd-max-retries: "30"
+        tag: jaeger
+    restart: unless-stopped
 
   # Prometheus - Metrics Gathering
   prometheus:
@@ -90,8 +157,19 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - ecommerce-network
+    depends_on:
+      - fluent-bit
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: localhost:24224
+        fluentd-async: "true"
+        fluentd-retry-wait: "1s"
+        fluentd-max-retries: "30"
+        tag: prometheus
+    restart: unless-stopped
 
-  # Grafana - Metrics Visualization - ID 14331
+  # Grafana - Metrics Visualization
   grafana:
     image: grafana/grafana:12.1.1
     container_name: grafana
@@ -101,8 +179,91 @@ services:
       - grafana_data:/var/lib/grafana
     networks:
       - ecommerce-network
+    depends_on:
+      - fluent-bit
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: localhost:24224
+        fluentd-async: "true"
+        fluentd-retry-wait: "1s"
+        fluentd-max-retries: "30"
+        tag: grafana
+    restart: unless-stopped
+
+  # ------------ LOGGING STACK ------------ #
+  # Elasticsearch - Log Storage and Search
+  elasticsearch:
+    image: elasticsearch:9.1.2
+    container_name: elasticsearch
+    environment:
+      - node.name=elasticsearch
+      - cluster.name=ecommerce-logs
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - xpack.security.enabled=false
+      - xpack.security.enrollment.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    networks:
+      - ecommerce-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  # Fluent Bit - Log Collection and Forwarding
+  fluent-bit:
+    image: fluent/fluent-bit:4.0.7
+    container_name: fluent-bit
+    ports:
+      - "24224:24224"
+      - "2020:2020"
+    volumes:
+      - ./fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf
+      - ./fluent-bit/parsers.conf:/fluent-bit/etc/parsers.conf
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - ecommerce-network
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Kibana - Log Visualization
+  kibana:
+    image: kibana:9.1.2
+    container_name: kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - xpack.security.enabled=false
+    ports:
+      - "5601:5601"
+    networks:
+      - ecommerce-network
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
 
   # ------------ GO SERVICES ------------ #
+  # API Gateway
   api-gateway:
     container_name: api-gateway
     image: ogozo/api-gateway:1.0
@@ -118,9 +279,20 @@ services:
       - service-product
       - service-cart
       - service-order
+      - fluent-bit
     env_file:
       - ./env/gateway.env
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: localhost:24224
+        fluentd-async: "true"
+        fluentd-retry-wait: "1s"
+        fluentd-max-retries: "30"
+        tag: api-gateway
+    restart: unless-stopped
 
+  # User Service
   service-user:
     container_name: service-user
     image: ogozo/service-user:1.0
@@ -131,9 +303,20 @@ services:
       - ecommerce-network
     depends_on:
       - postgres-db
+      - fluent-bit
     env_file:
       - ./env/user.env
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: localhost:24224
+        fluentd-async: "true"
+        fluentd-retry-wait: "1s"
+        fluentd-max-retries: "30"
+        tag: service-user
+    restart: unless-stopped
 
+  # Product Service
   service-product:
     container_name: service-product
     image: ogozo/service-product:1.0
@@ -145,9 +328,20 @@ services:
     depends_on:
       - postgres-db
       - redis-cache
+      - fluent-bit
     env_file:
       - ./env/product.env
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: localhost:24224
+        fluentd-async: "true"
+        fluentd-retry-wait: "1s"
+        fluentd-max-retries: "30"
+        tag: service-product
+    restart: unless-stopped
 
+  # Cart Service
   service-cart:
     container_name: service-cart
     image: ogozo/service-cart:1.0
@@ -158,9 +352,20 @@ services:
       - ecommerce-network
     depends_on:
       - init-couchbase
+      - fluent-bit
     env_file:
       - ./env/cart.env
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: localhost:24224
+        fluentd-async: "true"
+        fluentd-retry-wait: "1s"
+        fluentd-max-retries: "30"
+        tag: service-cart
+    restart: unless-stopped
       
+  # Order Service
   service-order:
     container_name: service-order
     image: ogozo/service-order:1.0
@@ -172,8 +377,18 @@ services:
     depends_on:
       - postgres-db
       - rabbitmq
+      - fluent-bit
     env_file:
       - ./env/order.env
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: localhost:24224
+        fluentd-async: "true"
+        fluentd-retry-wait: "1s"
+        fluentd-max-retries: "30"
+        tag: service-order
+    restart: unless-stopped
 
 networks:
   ecommerce-network:
@@ -184,3 +399,5 @@ volumes:
   couchbase_data:
   prometheus_data:
   grafana_data:
+  elasticsearch_data:
+  

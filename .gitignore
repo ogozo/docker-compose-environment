@@ -1,3 +1,5 @@
-postgres-init
-couchbase-init
+postgres-init/
+couchbase-init/
+fluent-bit/
+prometheus/
 *env*
