@@ -14,19 +14,32 @@ services:
       - ./postgres-init:/docker-entrypoint-initdb.d
     networks:
       - ecommerce-network
-
-  # Couchbase (Cart)
+  
+  # Couchbase (Cart)    
   couchbase-db:
     image: couchbase:community-7.1.1
     container_name: couchbase-db
     ports:
       - "8091-8096:8091-8096"
       - "11210:11210"
-    environment:
-      - COUCHBASE_ADMINISTRATOR_USERNAME=${COUCHBASE_USER}
-      - COUCHBASE_ADMINISTRATOR_PASSWORD=${COUCHBASE_PASSWORD}
+    env_file:
+      - .env
     volumes:
       - couchbase_data:/opt/couchbase/var
+    networks:
+      - ecommerce-network
+  
+  # Couchbase Setup    
+  init-couchbase:
+    build:
+      context: ./couchbase-init
+      dockerfile: Dockerfile
+    image: ecommerce/couchbase-init
+    container_name: init-couchbase
+    depends_on:
+      - couchbase-db
+    env_file:
+      - .env
     networks:
       - ecommerce-network
 
@@ -88,6 +101,79 @@ services:
       - grafana_data:/var/lib/grafana
     networks:
       - ecommerce-network
+
+  # ------------ GO SERVICES ------------ #
+  api-gateway:
+    container_name: api-gateway
+    image: ogozo/api-gateway:1.0
+    build:
+      context: ../api-gateway
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    networks:
+      - ecommerce-network
+    depends_on:
+      - service-user
+      - service-product
+      - service-cart
+      - service-order
+    env_file:
+      - ./env/gateway.env
+
+  service-user:
+    container_name: service-user
+    image: ogozo/service-user:1.0
+    build:
+      context: ../service-user
+      dockerfile: Dockerfile
+    networks:
+      - ecommerce-network
+    depends_on:
+      - postgres-db
+    env_file:
+      - ./env/user.env
+
+  service-product:
+    container_name: service-product
+    image: ogozo/service-product:1.0
+    build:
+      context: ../service-product
+      dockerfile: Dockerfile
+    networks:
+      - ecommerce-network
+    depends_on:
+      - postgres-db
+      - redis-cache
+    env_file:
+      - ./env/product.env
+
+  service-cart:
+    container_name: service-cart
+    image: ogozo/service-cart:1.0
+    build:
+      context: ../service-cart
+      dockerfile: Dockerfile
+    networks:
+      - ecommerce-network
+    depends_on:
+      - init-couchbase
+    env_file:
+      - ./env/cart.env
+      
+  service-order:
+    container_name: service-order
+    image: ogozo/service-order:1.0
+    build:
+      context: ../service-order
+      dockerfile: Dockerfile
+    networks:
+      - ecommerce-network
+    depends_on:
+      - postgres-db
+      - rabbitmq
+    env_file:
+      - ./env/order.env
 
 networks:
   ecommerce-network:
