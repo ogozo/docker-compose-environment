@@ -166,4 +166,5 @@ Once the system is running, you can monitor the platform's status through the fo
 *   **Grafana (Dashboards):** [http://localhost:3001](http://localhost:3001)
     *   After adding Prometheus as a data source, you can import the dashboard with ID **14331**.
 *   **Kibana (Logs):** [http://localhost:5601](http://localhost:5601)
-    *   You can discover all logs by creating a "data view" with the name `ecommerce-logs-*`.
+    *   You can discover all logs by creating a "data view" with the index `ecommerce-logs-*`.
+
